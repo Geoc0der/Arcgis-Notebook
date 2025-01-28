@@ -1,0 +1,6 @@
+# Yhden tason muokkaaminen viivoista pisteiksi
+
+import arcpy
+
+arcpy.env.workspace = 'C:\Paikalliset\oikea_tietokanta.gdb'
+arcpy.management.GeneratePointsAlongLines('input_layer_nimi', 'output_layer_nimi', 'DISTANCE', Distance='100 meters')
