@@ -1,0 +1,36 @@
+# Tämä scripti muuttaa koko featuren null valuet nolliksi
+
+import arcpy
+
+# Define the path to your feature class
+feature_class = "Tason nimi Arcgisissä"
+
+# List of fields to update
+fields_to_update = [
+    "Sarake1",
+    "Sarake2"
+]
+
+# Loop through each field and apply the CalculateField tool
+for field in fields_to_update:
+    print(f"Attempting to update null values in '{field}'...")
+    try:
+        arcpy.management.CalculateField(
+            in_table=feature_class,
+            field=field,
+            expression="reclassify_null(!{}!)".format(field),
+            expression_type="PYTHON3",
+            code_block="""
+def reclassify_null(value):
+    if value is None:
+        return 0
+    return value
+"""
+        )
+        print(f"Update of '{field}' complete.")
+    except arcpy.ExecuteError:
+        print(f"ERROR: Failed to update '{field}'. This field may not exist in the feature class.")
+    except Exception as e:
+        print(f"An unexpected error occurred for '{field}': {e}")
+
+print("Script execution finished.")
