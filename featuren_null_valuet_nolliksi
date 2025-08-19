@@ -1,4 +1,5 @@
 # Tämä scripti muuttaa koko featuren null valuet nolliksi
+# Tehty Geminillä ja Chatgpt:llä
 
 import arcpy
 
