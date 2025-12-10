@@ -4,7 +4,7 @@
 import arcpy
 
 # Define the path to your feature class
-feature_class = "Tason nimi Arcgisissä"
+feature_class = r"polku tasoon"
 
 # List of fields to update
 fields_to_update = [
