@@ -1,0 +1,31 @@
+#Tämä scripti muokkaa olemassa olevan gdb feature layerin uudeksi layeriksi, mutta ottaa mukaan vain rivillä 11 listassa määritellyt sarakkeet
+
+import arcpy
+
+# 1. Set up your paths
+input_layer = r"*polku*\Analyysit_ve2.gdb\Kärkölä_ykr_livcy_analyysitaso_leikattu_sw_vaihe_11_livcy_ajo_yhdistetty"
+output_gdb = r"*polku*\Kärkölä_viherarvot.gdb"
+output_name = "Kärköla_viherarvot"
+
+# 2. List the fields you want to KEEP
+fields_to_keep = ["Viheralueet"]
+
+# 3. Create a FieldMappings object to manage the columns
+field_mappings = arcpy.FieldMappings()
+
+for field in fields_to_keep:
+    f_map = arcpy.FieldMap()
+    f_map.addInputField(input_layer, field)
+    field_mappings.addFieldMap(f_map)
+
+# 4. Run the export
+try:
+    arcpy.conversion.FeatureClassToFeatureClass(
+        input_layer, 
+        output_gdb, 
+        output_name, 
+        field_mapping=field_mappings
+    )
+    print(f"Success! {output_name} created with columns: {', '.join(fields_to_keep)}")
+except Exception as e:
+    print(f"Error: {e}")
