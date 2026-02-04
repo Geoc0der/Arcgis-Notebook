@@ -1,0 +1,66 @@
+import arcpy
+import csv
+
+'''
+HUOM! 
+- Toimii parhaiten shapefileilla ja Esri geodatabaseilla. Geopackage-tiedostojen kanssa on ollut ongelmia.
+- Supplementary folderiin ei välttämättä pysty kirjoittamaan.
+- Output-tiedoston niminen tiedosto ei saa olla olemassa, muuten scripti ei toimi.
+- Tehty Geminillä
+'''
+
+# Paths
+point_layer = r"*polku tiedostoon*"
+buffer_layer = r"*polku tiedostoon*"
+kunta_layer = r"*polku tiedostoon*"
+output_csv = r"*polku tiedostoon*"
+
+# The name of the field in Kuntafin that identifies the municipality (e.g., 'Kunta_Nimi')
+kunta_id_field = "namefin" 
+
+# Clean up memory
+for lyr in ["pt_lyr", "kunta_sub_lyr"]:
+    if arcpy.Exists(lyr): arcpy.management.Delete(lyr)
+
+arcpy.management.MakeFeatureLayer(point_layer, "pt_lyr")
+
+results = []
+
+# Loop through each municipality
+with arcpy.da.SearchCursor(kunta_layer, [kunta_id_field, "SHAPE@"]) as cursor:
+    for row in cursor:
+        kunta_name = row[0]
+        kunta_geom = row[1]
+        
+        # 1. Select points strictly inside this municipality
+        arcpy.management.SelectLayerByLocation("pt_lyr", "COMPLETELY_WITHIN", kunta_geom)
+        
+        # Total points in this municipality
+        total_in_kunta = int(arcpy.management.GetCount("pt_lyr")[0])
+        
+        if total_in_kunta > 0:
+            # 2. Within those points, how many are also in the 500m buffer?
+            # We use 'SUBSET_SELECTION' to look only at points already selected by the Kunta
+            arcpy.management.SelectLayerByLocation("pt_lyr", "INTERSECT", buffer_layer, selection_type="SUBSET_SELECTION")
+            points_inside_buffer = int(arcpy.management.GetCount("pt_lyr")[0])
+            
+            # 3. Outside buffer = Total in Kunta - Inside Buffer
+            points_outside_buffer = total_in_kunta - points_inside_buffer
+        else:
+            points_inside_buffer = 0
+            points_outside_buffer = 0
+            
+        results.append({
+            'Kunta': kunta_name,
+            'Points_Inside_Buffer': points_inside_buffer,
+            'Points_Outside_Buffer': points_outside_buffer
+        })
+
+# Export to CSV with Semicolons
+with open(output_csv, mode='w', newline='', encoding='utf-8-sig') as csv_file:
+    fieldnames = ['Kunta', 'Points_Inside_Buffer', 'Points_Outside_Buffer']
+    writer = csv.DictWriter(csv_file, fieldnames=fieldnames, delimiter=';')
+    writer.writeheader()
+    writer.writerows(results)
+
+print(f"Process complete. Results saved for {len(results)} municipalities.")
