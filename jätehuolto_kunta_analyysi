@@ -6,6 +6,7 @@ HUOM!
 - Toimii parhaiten shapefileilla ja Esri geodatabaseilla. Geopackage-tiedostojen kanssa on ollut ongelmia.
 - Supplementary folderiin ei välttämättä pysty kirjoittamaan.
 - Output-tiedoston niminen tiedosto ei saa olla olemassa, muuten scripti ei toimi.
+- Kaikilla tasoilla pitää olla sama projektio
 - Tehty Geminillä
 '''
 
