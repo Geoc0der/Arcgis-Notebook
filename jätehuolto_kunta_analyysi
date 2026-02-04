@@ -1,6 +1,10 @@
 import arcpy
 import csv
-
+'''
+Scripti on tarkoitettu laskemaan tyhjennyspisteiden lähellä sijaitsevien perusmaksurekisterien määrän kunnittain. Scripti ottaa sisään
+pistemuodossa perusmaksurekisterin pisteet, tyhjennyspisterekisteristä luodut vyöhykkeet sekä kuntarajat. Mikäli kunta sijaitsee meren rannalla myös
+kuntarajan on ulotuttava merelle.
+'''
 '''
 HUOM! 
 - Toimii parhaiten shapefileilla ja Esri geodatabaseilla. Geopackage-tiedostojen kanssa on ollut ongelmia.
