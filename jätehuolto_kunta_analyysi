@@ -13,6 +13,7 @@ HUOM!
 point_layer = r"*polku tiedostoon*"
 buffer_layer = r"*polku tiedostoon*"
 kunta_layer = r"*polku tiedostoon*"
+# Muista .csv-pääte
 output_csv = r"*polku tiedostoon*"
 
 # The name of the field in Kuntafin that identifies the municipality (e.g., 'Kunta_Nimi')
