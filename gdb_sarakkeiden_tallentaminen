@@ -1,4 +1,5 @@
-#Tämä scripti muokkaa olemassa olevan gdb feature layerin uudeksi layeriksi, mutta ottaa mukaan vain rivillä 11 listassa määritellyt sarakkeet
+# Tämä scripti muokkaa olemassa olevan gdb feature layerin uudeksi layeriksi, mutta ottaa mukaan vain rivillä 11 listassa määritellyt sarakkeet
+# Tehty Geminillä
 
 import arcpy
 
