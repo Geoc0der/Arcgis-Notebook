@@ -1,0 +1,95 @@
+import arcpy
+import csv
+from collections import defaultdict
+
+'''
+Tämä scripti laskee jätehuoltoanalyyseissä tarvittavat luvut perusmaksurekisterin, tyhjennyspistebuffereiden ja ykr-alueluokituksen avulla.
+'''
+'''
+HUOM!
+- Geopackage-aineistojen kanssa voi olla ongelmia, käytä mielummin Esri gdb tai shapefile.
+- Käytä ykr-aluerakenne-ainestona dataa, jossa kaikki eri alueet on yhdistetty yhdeksi polygon-tasoksi ja alueet on eritelty Luokka-sarakkeessa.
+'''
+
+# 1. ASETUKSET
+perusmaksurekisteri = r"*polku*"
+vyohykkeet = r"*polku*"
+ykr_aluerakenne = r"*polku*"
+output_csv = r"*polku*"
+
+# Kentän nimi ja uusi kategonian nimi
+YKR_LUOKKA_KENTTA = "Luokka"
+ULKOPUOLINEN_ALUE = "Yhdyskuntarakenteen ulkopuolinen alue"
+
+def luo_tulos_lopullinen():
+    try:
+        arcpy.env.overwriteOutput = True
+        print("Aloitetaan analyysi...")
+
+        # 2. HAETAAN UNIIKIT YKR-LUOKAT + LISÄTÄÄN MÄÄRITETTY ULKOPUOLINEN ALUE
+        ykr_luokat = sorted(list(set(row[0] for row in arcpy.da.SearchCursor(ykr_aluerakenne, [YKR_LUOKKA_KENTTA]) if row[0])))
+        ykr_luokat.append(ULKOPUOLINEN_ALUE)
+        
+        # 3. SPATIAALINEN LIITOS (Pisteet + YKR)
+        pisteet_ykr_datalla = arcpy.analysis.SpatialJoin(
+            perusmaksurekisteri, 
+            ykr_aluerakenne, 
+            "in_memory\pisteet_ykr",
+            join_operation="JOIN_ONE_TO_ONE",
+            join_type="KEEP_ALL"
+        )
+
+        # 4. VYÖHYKKEIDEN YHDISTÄMINEN YHDEKSI GEOMETRIAKSI
+        print("Yhdistetään vyöhykegeometriat vertailua varten...")
+        vyohyke_geometriat = [row[0] for row in arcpy.da.SearchCursor(vyohykkeet, ["SHAPE@"])]
+        if not vyohyke_geometriat:
+            raise ValueError("Vyöhykeaineisto on tyhjä!")
+        
+        yhdistetty_vyohyke = vyohyke_geometriat[0]
+        for geom in vyohyke_geometriat[1:]:
+            yhdistetty_vyohyke = yhdistetty_vyohyke.union(geom)
+
+        # 5. AGGREGOINTI (Laskenta)
+        tulokset = {
+            "Bufferin sisällä": defaultdict(int),
+            "Bufferin ulkopuolella": defaultdict(int)
+        }
+
+        print("Analysoidaan pisteiden sijainteja...")
+        with arcpy.da.SearchCursor(pisteet_ykr_datalla, ["SHAPE@", YKR_LUOKKA_KENTTA]) as cursor:
+            for point_geom, ykr_luokka in cursor:
+                # Määritetään sarakkeen nimi
+                luokka_nimi = ykr_luokka if ykr_luokka else ULKOPUOLINEN_ALUE
+                
+                # Spatiaalinen tarkistus suhteessa bufferiin
+                if not point_geom.disjoint(yhdistetty_vyohyke):
+                    sijainti = "Bufferin sisällä"
+                else:
+                    sijainti = "Bufferin ulkopuolella"
+                
+                tulokset[sijainti][luokka_nimi] += 1
+
+        # 6. KIRJOITUS CSV-TIEDOSTOON (UTF-8-SIG ja puolipiste)
+        with open(output_csv, 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f, delimiter=';')
+            
+            # Otsikkorivi (ensimmäinen solu tyhjä, sitten YKR-luokat)
+            writer.writerow([""] + ykr_luokat)
+            
+            # Data-rivit skeeman mukaisesti
+            for kategoria in ["Bufferin sisällä", "Bufferin ulkopuolella"]:
+                rivi = [kategoria]
+                for luokka in ykr_luokat:
+                    rivi.append(tulokset[kategoria].get(luokka, 0))
+                writer.writerow(rivi)
+
+        print(f"Valmis! Tulokset tallennettu polkuun: {output_csv}")
+
+    except Exception as e:
+        print(f"Virhe: {e}")
+    finally:
+        if arcpy.Exists("in_memory"):
+            arcpy.management.Delete("in_memory")
+
+if __name__ == "__main__":
+    luo_tulos_lopullinen()
