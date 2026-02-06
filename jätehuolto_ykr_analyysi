@@ -4,6 +4,7 @@ from collections import defaultdict
 
 '''
 Tämä scripti laskee jätehuoltoanalyyseissä tarvittavat luvut perusmaksurekisterin, tyhjennyspistebuffereiden ja ykr-alueluokituksen avulla.
+Tehty Geminillä.
 '''
 '''
 HUOM!
