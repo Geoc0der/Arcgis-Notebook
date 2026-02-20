@@ -1,0 +1,125 @@
+import arcpy
+import csv
+from collections import defaultdict
+
+def luo_tulos_kunnittain_korjattu():
+    # 1. ASETUKSET
+    perusmaksurekisteri = r"*polku*\jätehuolto_muu_paikkatieto.gdb\main_Perusmaksurekisteri_yhdistetty_20260126_vapaa_aika"
+    vyohykkeet = r"*polku*\Tyhjennyspisteri_vyoh_500m_20260204.shp"
+    ykr_aluerakenne = r"*polku*\YKR_asutus_2024_yhdistetty.gdb\YKR_asutus_2024_yhdistetty_4326"
+    kunnat_taso = r"*polku*\jätehuolto_muu_paikkatieto.gdb\main_Kunta_Project_4326"
+    
+    kunta_kentta = "namefin" 
+    ykr_luokka_kentta = "Luokka"
+    
+    output_csv = r"\\files\Projects\REH2025N099XX\REH2025N09925\Työkalut\Syvällinen kunta-analyysi\Kehitys\Syvällinen_kunta_analyysi_vapaa_ajan_20260220_final_ve1.csv"
+
+    try:
+        print("Aloitetaan analyysi...")
+        arcpy.env.overwriteOutput = True
+        
+        # 2. SPATIAL JOINIT
+        # Tehdään ketjutettu liitos: Pisteet -> YKR-luokkaan -> Kuntarajoihin
+        print("Liitetään YKR-luokitukset ja kuntatiedot pisteisiin...")
+        
+        # Liitos 1: Pisteet + YKR
+        pisteet_ykr = arcpy.analysis.SpatialJoin(
+            perusmaksurekisteri, 
+            ykr_aluerakenne, 
+            "memory/pisteet_ykr",
+            join_operation="JOIN_ONE_TO_ONE",
+            match_option="INTERSECT"
+        )
+        
+        # Liitos 2: Edellinen tulos + Kunnat
+        valmis_aineisto = arcpy.analysis.SpatialJoin(
+            pisteet_ykr, 
+            kunnat_taso, 
+            "memory/final_pisteet",
+            join_operation="JOIN_ONE_TO_ONE",
+            match_option="INTERSECT"
+        )
+
+        # 3. VALMISTELU: Vyöhykkeet
+        print("Käsitellään vyöhykkeet...")
+        vyohyke_lyr = "memory/vyohyke_union"
+        arcpy.analysis.Union([vyohykkeet], vyohyke_lyr)
+
+        # Sanakirja: tulokset[Kunta][Kategoria][YKR-luokka]
+        tulokset = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+        loytyneet_ykr_luokat = set()
+
+        # 4. LASKENTA
+        # Tarkistetaan oikeat kentän nimet (Spatial Join saattaa muuttaa niitä)
+        fields_in_data = [f.name for f in arcpy.ListFields(valmis_aineisto)]
+        
+        actual_ykr_field = next((f for f in fields_in_data if f.upper() == ykr_luokka_kentta.upper()), None)
+        actual_kunta_field = next((f for f in fields_in_data if f.upper() == kunta_kentta.upper()), None)
+
+        if not actual_ykr_field:
+            raise Exception(f"YKR-kenttää ei löytynyt. Löytyneet: {fields_in_data}")
+
+        print("Lasketaan tilastoja...")
+        with arcpy.da.SearchCursor(valmis_aineisto, ["SHAPE@", actual_ykr_field, actual_kunta_field]) as cursor:
+            for row in cursor:
+                piste, ykr_val, kunta_val = row
+                
+                kunta = str(kunta_val) if kunta_val else "Tuntematon"
+                ykr_luokka = str(ykr_val) if ykr_val else "Ulkopuolella"
+                
+                loytyneet_ykr_luokat.add(ykr_luokka)
+                
+                # Vyöhyketarkistus (sisällä/ulkona)
+                sisalla = False
+                with arcpy.da.SearchCursor(vyohyke_lyr, ["SHAPE@"]) as v_cursor:
+                    for v_row in v_cursor:
+                        if piste.within(v_row[0]):
+                            sisalla = True
+                            break
+                
+                kategoria = "Bufferin sisällä" if sisalla else "Bufferin ulkopuolella"
+                tulokset[kunta][kategoria][ykr_luokka] += 1
+
+        # 5. KIRJOITUS CSV (Skeeman mukaisesti)
+        ykr_list = sorted(list(loytyneet_ykr_luokat))
+        
+        with open(output_csv, 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f, delimiter=';')
+            
+            for kunta in sorted(tulokset.keys()):
+                # Otsikkorivi kunnan nimellä
+                writer.writerow([kunta, "", ""] + ykr_list + ["Yhteensä"])
+                
+                kunta_yhteensa = defaultdict(int)
+                
+                for kateg in ["Bufferin sisällä", "Bufferin ulkopuolella"]:
+                    rivi = ["", kateg, ""] # Skeeman mukaiset tyhjät sarakkeet
+                    summa = 0
+                    for luokka in ykr_list:
+                        maara = tulokset[kunta][kateg].get(luokka, 0)
+                        rivi.append(maara)
+                        summa += maara
+                        kunta_yhteensa[luokka] += maara
+                    
+                    rivi.append(summa)
+                    writer.writerow(rivi)
+                
+                # Yhteensä-rivi
+                yht_rivi = ["", "Yht", ""]
+                kaikki_yhteensa = 0
+                for luokka in ykr_list:
+                    yht_rivi.append(kunta_yhteensa[luokka])
+                    kaikki_yhteensa += kunta_yhteensa[luokka]
+                yht_rivi.append(kaikki_yhteensa)
+                writer.writerow(yht_rivi)
+                writer.writerow([]) # Tyhjä rivi väliin
+
+        print(f"Valmis! Tiedosto tallennettu: {output_csv}")
+
+    except Exception as e:
+        print(f"Virhe: {e}")
+    finally:
+        arcpy.management.Delete("memory")
+
+if __name__ == "__main__":
+    luo_tulos_kunnittain_korjattu()
