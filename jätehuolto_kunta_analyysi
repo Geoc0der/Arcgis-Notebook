@@ -23,7 +23,7 @@ output_csv = r"*polku tiedostoon*"
 # The name of the field in Kuntafin that identifies the municipality (e.g., 'Kunta_Nimi')
 kunta_id_field = "namefin" 
 
-# Clean up memory
+# Poistetaan tasot, joiden nimi pt_lyr tai kunta_sub_lyr. Vähentää ongelmia myöhemmin.
 for lyr in ["pt_lyr", "kunta_sub_lyr"]:
     if arcpy.Exists(lyr): arcpy.management.Delete(lyr)
 
