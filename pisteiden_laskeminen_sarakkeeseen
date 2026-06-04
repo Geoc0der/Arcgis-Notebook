@@ -1,0 +1,58 @@
+import arcpy
+
+# 1. Määritä tasojen polut (Korvaa nämä omilla poluillasi)
+buildings_layer = r"polku"
+companies_layer = r"polku"
+
+# Sallitaan väliaikaisten tasojen ylikirjoittaminen tietokoneen muistissa
+arcpy.env.overwriteOutput = True
+
+# 2. Luodaan uusi sarake rakennustasoon (jos sitä ei jo ole)
+field_name = "TYOLLISTAJAT_LKM"
+existing_fields = [f.name for f in arcpy.ListFields(buildings_layer)]
+
+if field_name in existing_fields:
+    print(f"Sarake '{field_name}' on jo olemassa. Poistetaan vanha sarake tietotyypin nollaamiseksi...")
+    arcpy.management.DeleteField(buildings_layer, field_name)
+
+print(f"Luodaan uusi '{field_name}' -sarake (LONG / kokonaisluku)...")
+arcpy.management.AddField(buildings_layer, field_name, "LONG", field_alias="Työllistäjien lukumäärä (150m)")
+
+# 3. Suoritetaan Spatial Join tietokoneen muistiin (in-memory)
+# Tämä laskee automaattisesti etäisyyden sisällä olevat pisteet 'Join_Count'-sarakkeeseen
+print("Lasketaan toimipaikkojen etäisyyksiä muistiin...")
+temp_join_layer = r"memory\temp_spatial_join"
+
+arcpy.analysis.SpatialJoin(
+    target_features=buildings_layer,
+    join_features=companies_layer,
+    out_feature_class=temp_join_layer,
+    join_operation="JOIN_ONE_TO_ONE",
+    join_type="KEEP_ALL",
+    match_option="WITHIN_A_DISTANCE",
+    search_radius="150 Meters"
+)
+
+# 4. Haetaan lasketut määrät muistista sanakirjaan (dictionary)
+print("Haetaan tulokset...")
+join_data = {}
+# TARGET_FID on alkuperäisen rakennuksen ID väliaikaistasossa, Join_Count on pisteiden määrä
+with arcpy.da.SearchCursor(temp_join_layer, ["TARGET_FID", "Join_Count"]) as search_cursor:
+    for row in search_cursor:
+        # Jos Join_Count on tyhjä (None), asetetaan määräksi 0
+        join_data[row[0]] = row[1] if row[1] is not None else 0
+
+# 5. Päivitetään määrät alkuperäiseen rakennustasoon
+print("Päivitetään tiedot alkuperäiseen rakennustasoon...")
+with arcpy.da.UpdateCursor(buildings_layer, ["OID@", field_name]) as update_cursor:
+    for row in update_cursor:
+        obj_id = row[0]
+        if obj_id in join_data:
+            row[1] = join_data[obj_id]
+            update_cursor.updateRow(row)
+
+# 6. Tyhjennetään välimuisti
+print("Siivotaan väliaikaistiedostot...")
+arcpy.management.Delete(temp_join_layer)
+
+print(f"Valmis! Rakennustaso on päivitetty. Löydät tulokset sarakkeesta '{field_name}'.")
