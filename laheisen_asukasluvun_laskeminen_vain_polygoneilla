@@ -1,0 +1,87 @@
+'''
+Tämä koodi laskee kohdepolygonitasoon (esim. buildings_layer) toisen polygonitason 
+(esim. population_layer) perusteella asukasmäärän summan 150 metrin etäisyydellä (reunasta reunaan).
+Koodi huomioi vain ne alueet, joissa asukasmäärä on alle tai tasan 10000.
+Koodi tekee uuden sarakkeen olemassa olevaan kohdedataan.
+'''
+
+import arcpy
+
+# 1. Set up paths (Molemmat ovat nyt polygon-muotoisia tasoja)
+buildings_layer = r"polku"      # Kohdepolygonit (Target)
+population_layer = r"polku"    # Lähdepolygonit, joista summataan (Join)
+
+# Allow overwriting for the temporary in-memory layers
+arcpy.env.overwriteOutput = True
+
+# 2. Check and fix the column type in the original buildings layer
+field_name = "MAL_TYOP45"
+existing_fields = [f.name for f in arcpy.ListFields(buildings_layer)]
+
+if field_name in existing_fields:
+    print(f"Column '{field_name}' already exists. Deleting it to reset the data type...")
+    arcpy.management.DeleteField(buildings_layer, field_name)
+
+print(f"Creating a fresh '{field_name}' column as DOUBLE...")
+arcpy.management.AddField(buildings_layer, field_name, "DOUBLE", field_alias="MAL-työpaikat vuonna 2045")
+
+# 3. Create a filtered layer of the population polygons (Excluding > 10000)
+print("Filtering population layer to exclude tyopaikat_45 values > 10000...")
+filtered_population_layer = "filtered_population"
+sql_expression = "tyopaikat_45 <= 10000" 
+
+# MakeFeatureLayer toimii yhtä lailla pisteille kuin polygoneille
+arcpy.management.MakeFeatureLayer(population_layer, filtered_population_layer, sql_expression)
+
+# 4. Setup Field Mapping for the temporary spatial join
+print("Configuring field mappings...")
+field_mappings = arcpy.FieldMappings()
+field_mappings.addTable(buildings_layer)
+
+aslkm_field_map = arcpy.FieldMap()
+aslkm_field_map.addInputField(filtered_population_layer, "tyopaikat_45")
+
+output_field = aslkm_field_map.outputField
+output_field.name = "TMP_SUM" 
+aslkm_field_map.outputField = output_field
+aslkm_field_map.mergeRule = "Sum"  # Summattaan kaikkien 150m säteellä olevien polygonien ASLKM-arvot
+field_mappings.addFieldMap(aslkm_field_map)
+
+# 5. Run the Spatial Join using the FILTERED population polygons
+print("Calculating sums in memory...")
+temp_join_layer = r"memory\temp_spatial_join"
+
+# Kahden polygonin välillä "WITHIN_A_DISTANCE" mittaa etäisyyden polygonin reunasta toisen polygonin reunaan.
+# Tämä vastaa tilannetta, jossa 150 metrin bufferi koskettaa toista tasoa.
+arcpy.analysis.SpatialJoin(
+    target_features=buildings_layer,
+    join_features=filtered_population_layer, 
+    out_feature_class=temp_join_layer,
+    join_operation="JOIN_ONE_TO_ONE",
+    join_type="KEEP_ALL",
+    field_mapping=field_mappings,
+    match_option="WITHIN_A_DISTANCE",
+    search_radius="150 Meters"
+)
+
+# 6. Map the results back to the original layer using cursors
+print("Updating the original file with the calculated sums...")
+
+join_data = {}
+with arcpy.da.SearchCursor(temp_join_layer, ["TARGET_FID", "TMP_SUM"]) as search_cursor:
+    for row in search_cursor:
+        join_data[row[0]] = row[1] if row[1] is not None else 0.0
+
+with arcpy.da.UpdateCursor(buildings_layer, ["OID@", field_name]) as update_cursor:
+    for row in update_cursor:
+        obj_id = row[0]
+        if obj_id in join_data:
+            row[1] = join_data[obj_id]  
+            update_cursor.updateRow(row)
+
+# 7. Clean up the memory workspace and temporary layers
+print("Cleaning up temporary layers...")
+arcpy.management.Delete(temp_join_layer)
+arcpy.management.Delete(filtered_population_layer)
+
+print("Process complete! The original polygon file has been updated based on adjacent polygons within 150m.")
