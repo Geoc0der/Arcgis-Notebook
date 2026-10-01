@@ -1,0 +1,15 @@
+# Scripti, joka luo useita polygon-tyyppisiä tasoja geodatabaseen
+
+import arcpy
+
+# Set your target geodatabase workspace
+arcpy.env.workspace = r"C:\Users\YourPath\YourProject\YourGeodatabase.gdb"
+
+# List the names of the new polygon layers you want to create
+layer_names = ["Zone_A", "Zone_B", "Zone_C", "Zone_D"]
+
+# Loop through and create each polygon feature class
+for name in layer_names:
+  arcpy.management.CreateFeatureclass(
+      arcpy.env.workspace, name, "POLYGON"
+  )
